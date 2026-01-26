@@ -4,6 +4,7 @@ data/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Cursor IDE
 .cursor/
