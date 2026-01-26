@@ -11,6 +11,10 @@ uv sync --all-extras
 ## Quick Start
 
 ```bash
+# Copy and configure environment
+cp .env.example .env
+# Edit .env with your Hugging Face token
+
 # Basic usage
 uv run transcribe audio.mp3 --hf-token YOUR_HUGGINGFACE_TOKEN
 
@@ -54,7 +58,7 @@ For an input file `recording.mp3`, the pipeline produces:
 
 ```python
 from pathlib import Path
-from sales_agent import pipeline, PipelineConfig
+from sales_agent import run, PipelineConfig
 
 config = PipelineConfig(
     whisper_model="large-v3",
@@ -63,7 +67,7 @@ config = PipelineConfig(
     num_speakers=2,
 )
 
-result = pipeline.run(
+result = run(
     Path("audio.mp3"),
     hf_token="hf_...",
     config=config,
