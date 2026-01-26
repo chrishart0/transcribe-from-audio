@@ -1,0 +1,37 @@
+[project]
+name = "sales-agent"
+version = "0.1.0"
+description = "Diarized transcription using Whisper + pyannote.audio"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "faster-whisper>=1.1.0",
+    "pyannote-audio>=3.4.0",
+    "soundfile>=0.13.0",
+    "librosa>=0.10.0",
+    "numpy>=1.26.0",
+    "rich>=13.0.0",
+    "noisereduce>=3.0.3",
+    "scipy>=1.15.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+]
+
+[project.scripts]
+transcribe = "sales_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v"
+
