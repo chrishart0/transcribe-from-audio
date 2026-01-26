@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sales_agent.models import Utterance
+from whisper_diarize.models import Utterance
 
 
 def format_srt_timestamp(seconds: float) -> str:

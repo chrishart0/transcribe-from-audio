@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 
 import soundfile as sf
 
-from sales_agent import audio, diarization, transcription
-from sales_agent.alignment import align_words_to_speakers
-from sales_agent.models import Utterance
-from sales_agent.output import write_all
+from whisper_diarize import audio, diarization, transcription
+from whisper_diarize.alignment import align_words_to_speakers
+from whisper_diarize.models import Utterance
+from whisper_diarize.output import write_all
 
 if TYPE_CHECKING:
-    from sales_agent.models import SpeakerTurn, WordItem
+    from whisper_diarize.models import SpeakerTurn, WordItem
 
 
 @dataclass

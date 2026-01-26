@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sales_agent.models import SpeakerTurn, Utterance, WordItem
+from whisper_diarize.models import SpeakerTurn, Utterance, WordItem
 
 
 def find_speaker_at_time(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sales_agent.models import SpeakerTurn
+from whisper_diarize.models import SpeakerTurn
 
 
 def diarize(

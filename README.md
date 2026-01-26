@@ -1,4 +1,4 @@
-# Sales Agent - Diarized Transcription
+# whisper-diarize
 
 Local diarized transcription using **faster-whisper** (Whisper large-v3 via CTranslate2) and **pyannote.audio** for speaker diarization.
 
@@ -58,7 +58,7 @@ For an input file `recording.mp3`, the pipeline produces:
 
 ```python
 from pathlib import Path
-from sales_agent import run, PipelineConfig
+from whisper_diarize import run, PipelineConfig
 
 config = PipelineConfig(
     whisper_model="large-v3",
@@ -80,7 +80,7 @@ for utterance in result.utterances:
 ## Package Structure
 
 ```
-src/sales_agent/
+whisper_diarize/
 ├── __init__.py      # Public API exports
 ├── models.py        # Data models (SpeakerTurn, WordItem, Utterance)
 ├── audio.py         # Audio loading and cleaning

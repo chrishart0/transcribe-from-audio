@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from sales_agent.alignment import align_words_to_speakers, find_speaker_at_time
-from sales_agent.models import SpeakerTurn, WordItem
+from whisper_diarize.alignment import align_words_to_speakers, find_speaker_at_time
+from whisper_diarize.models import SpeakerTurn, WordItem
 
 
 class TestFindSpeakerAtTime:

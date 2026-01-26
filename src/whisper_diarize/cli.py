@@ -8,8 +8,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from sales_agent import pipeline
-from sales_agent.pipeline import PipelineConfig
+from whisper_diarize import pipeline
+from whisper_diarize.pipeline import PipelineConfig
 
 console = Console()
 

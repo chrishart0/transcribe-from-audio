@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sales_agent.models import WordItem
+from whisper_diarize.models import WordItem
 
 if TYPE_CHECKING:
     import numpy as np

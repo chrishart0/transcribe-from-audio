@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from sales_agent.models import Utterance
-from sales_agent.output import format_srt_timestamp, to_json, to_srt, to_text, write_all
+from whisper_diarize.models import Utterance
+from whisper_diarize.output import format_srt_timestamp, to_json, to_srt, to_text, write_all
 
 
 class TestFormatSrtTimestamp:

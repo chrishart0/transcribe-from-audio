@@ -1,28 +1,7 @@
 # Publishing to PyPI
 
-## ⚠️ Blocker: Package Name Conflict
-
-The name `sales-agent` is **already taken** on PyPI (currently at version 0.0.2).
-
-**Action required:** Choose a new package name before publishing.
-
-Suggestions:
-- `diarize-whisper`
-- `whisper-diarize`
-- `transcribe-diarize`
-- `audio-diarize`
-
-Once you choose a name, update these files:
-1. `pyproject.toml` - `name` field
-2. `src/sales_agent/` - rename the directory
-3. All imports in `src/` and `tests/`
-4. `README.md` - update examples
-
----
-
 ## Pre-publish Checklist
 
-- [ ] **Rename package** (see above)
 - [ ] **Update URLs** in `pyproject.toml` with your actual GitHub repo
 - [ ] **Verify README renders** - PyPI uses the README as the package description
 - [ ] **Run tests** - `uv run pytest tests/ -v`
@@ -41,8 +20,8 @@ uv build
 ```
 
 This creates:
-- `dist/sales_agent-0.1.0-py3-none-any.whl`
-- `dist/sales_agent-0.1.0.tar.gz`
+- `dist/whisper_diarize-0.1.0-py3-none-any.whl`
+- `dist/whisper_diarize-0.1.0.tar.gz`
 
 ### 2. Test on TestPyPI first (recommended)
 
@@ -78,7 +57,7 @@ uv publish
 
 Before each release, update the version in both:
 1. `pyproject.toml` - `version = "X.Y.Z"`
-2. `src/sales_agent/__init__.py` - `__version__ = "X.Y.Z"`
+2. `src/whisper_diarize/__init__.py` - `__version__ = "X.Y.Z"`
 
 Follow [semantic versioning](https://semver.org/):
 - **MAJOR** (1.0.0) - breaking API changes
