@@ -75,4 +75,3 @@ class TestWriteAll:
 
         assert outputs["json"].read_text() == "[]"
         assert outputs["txt"].read_text() == "\n"
-

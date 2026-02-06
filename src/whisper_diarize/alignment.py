@@ -95,4 +95,3 @@ def align_words_to_speakers(
         utterances.append(current)
 
     return utterances
-

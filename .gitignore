@@ -6,8 +6,8 @@ data/
 .env.*
 !.env.example
 
-# Cursor IDE
-.cursor/
+# Test data
+test_data/real/
 
 # Python
 __pycache__/
@@ -30,6 +30,8 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.cursor/
+.claude/
 
 # OS
 .DS_Store

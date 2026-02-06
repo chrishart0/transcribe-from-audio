@@ -75,4 +75,3 @@ def write_all(out_base: Path, utterances: list[Utterance]) -> dict[str, Path]:
     outputs["srt"] = srt_path
 
     return outputs
-

@@ -1,0 +1,27 @@
+[
+  {
+    "start": 0.0,
+    "end": 2.5,
+    "speaker": "SPEAKER_00",
+    "text": "Hello, how are you doing today?"
+  },
+  {
+    "start": 2.8,
+    "end": 5.2,
+    "speaker": "SPEAKER_01",
+    "text": "I'm doing great, thanks for asking."
+  },
+  {
+    "start": 5.5,
+    "end": 8.0,
+    "speaker": "SPEAKER_00",
+    "text": "That's wonderful to hear."
+  },
+  {
+    "start": 8.3,
+    "end": 12.0,
+    "speaker": "SPEAKER_01",
+    "text": "Yes, it's been a really good day so far."
+  }
+]
+

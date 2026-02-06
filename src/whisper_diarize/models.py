@@ -23,4 +23,3 @@ class Utterance:
     end_s: float
     speaker: str
     text: str
-

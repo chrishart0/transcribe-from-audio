@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from whisper_diarize.alignment import align_words_to_speakers, find_speaker_at_time
 from whisper_diarize.models import SpeakerTurn, WordItem
 
@@ -89,4 +87,3 @@ class TestAlignWordsToSpeakers:
         utterances = align_words_to_speakers(turns, words, gap_tolerance=0.5)
         assert len(utterances) == 1
         assert utterances[0].speaker == "UNKNOWN"
-

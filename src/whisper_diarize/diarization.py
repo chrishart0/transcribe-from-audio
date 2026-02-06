@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from whisper_diarize.models import SpeakerTurn
+
+if TYPE_CHECKING:
+    from whisper_diarize.audio import StageProgressFn
 
 
 def diarize(
@@ -14,6 +18,7 @@ def diarize(
     num_speakers: int | None = None,
     min_speakers: int | None = None,
     max_speakers: int | None = None,
+    on_progress: StageProgressFn | None = None,
 ) -> list[SpeakerTurn]:
     """
     Run speaker diarization on audio file.
@@ -25,12 +30,18 @@ def diarize(
         num_speakers: Exact number of speakers (if known)
         min_speakers: Minimum expected speakers
         max_speakers: Maximum expected speakers
+        on_progress: Reports (description, local_fraction) within this stage.
+            Model loading is ~15% of the cost, inference is ~85%.
     """
     from pyannote.audio import Pipeline
 
-    pipeline = Pipeline.from_pretrained(model_id, token=token)
+    if on_progress:
+        on_progress("Loading diarization model", 0.0)
+    pipeline = Pipeline.from_pretrained(model_id, token=token)  # type: ignore[call-arg]
+    if pipeline is None:
+        raise RuntimeError(f"Failed to load diarization model: {model_id}")
 
-    diarization_args = {}
+    diarization_args: dict[str, int] = {}
     if num_speakers is not None:
         diarization_args["num_speakers"] = num_speakers
     if min_speakers is not None:
@@ -38,7 +49,9 @@ def diarize(
     if max_speakers is not None:
         diarization_args["max_speakers"] = max_speakers
 
-    result = pipeline(str(wav_path), **diarization_args)
+    if on_progress:
+        on_progress("Diarizing speakers", 0.15)
+    result = pipeline(str(wav_path), **diarization_args)  # type: ignore[arg-type]
 
     turns: list[SpeakerTurn] = []
     for turn, _, speaker in result.speaker_diarization.itertracks(yield_label=True):
@@ -51,5 +64,8 @@ def diarize(
         )
 
     turns.sort(key=lambda t: t.start_s)
-    return turns
 
+    if on_progress:
+        on_progress("Diarizing speakers", 1.0)
+
+    return turns
