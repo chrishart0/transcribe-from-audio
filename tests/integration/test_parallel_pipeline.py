@@ -7,6 +7,7 @@ the real pipeline orchestration, audio loading, cleaning, alignment, and output.
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -240,7 +241,7 @@ class TestParallelPipelineIntegration:
                 )
 
             # Temp WAV for diarization should be cleaned up
-            tmp_wav = Path(tmpdir) / "test.tmp_16k_mono.wav"
+            tmp_wav = Path(tmpdir) / "test.wav.tmp_16k_mono.wav"
             assert not tmp_wav.exists()
 
     def test_pipeline_error_still_cleans_up(self):
@@ -265,5 +266,153 @@ class TestParallelPipelineIntegration:
                         parallel=True,
                     )
 
-            tmp_wav = Path(tmpdir) / "test.tmp_16k_mono.wav"
+            tmp_wav = Path(tmpdir) / "test.wav.tmp_16k_mono.wav"
             assert not tmp_wav.exists()
+
+
+@pytest.mark.integration
+class TestOutputDir:
+    """Test --output-dir functionality."""
+
+    def _run_with_mocks(self, wav_path: Path, **kwargs):
+        with (
+            patch(
+                "whisper_diarize.diarization.diarize",
+                side_effect=_fake_diarize_factory(MOCK_TURNS),
+            ),
+            patch(
+                "whisper_diarize.transcription.transcribe",
+                side_effect=_fake_transcribe_factory(MOCK_WORDS),
+            ),
+        ):
+            return run(
+                wav_path,
+                hf_token="fake-token",
+                config=PipelineConfig(clean_audio=False),
+                **kwargs,
+            )
+
+    def test_output_dir_creates_files_there(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "test.wav"
+            _make_test_wav(wav_path)
+            out_dir = Path(tmpdir) / "output"
+
+            result = self._run_with_mocks(wav_path, output_dir=out_dir)
+
+            for p in result.output_paths.values():
+                assert p.parent == out_dir
+                assert p.exists()
+
+    def test_output_dir_creates_missing_dirs(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "test.wav"
+            _make_test_wav(wav_path)
+            out_dir = Path(tmpdir) / "a" / "b" / "c"
+
+            result = self._run_with_mocks(wav_path, output_dir=out_dir)
+
+            assert out_dir.is_dir()
+            for p in result.output_paths.values():
+                assert p.exists()
+
+    def test_default_outputs_next_to_input(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "test.wav"
+            _make_test_wav(wav_path)
+
+            result = self._run_with_mocks(wav_path)
+
+            for p in result.output_paths.values():
+                assert p.parent == Path(tmpdir)
+
+
+@pytest.mark.integration
+class TestMultiFileParallel:
+    """Test processing multiple files concurrently via ThreadPoolExecutor."""
+
+    def test_two_files_parallel_both_succeed(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_a = Path(tmpdir) / "a.wav"
+            wav_b = Path(tmpdir) / "b.wav"
+            _make_test_wav(wav_a)
+            _make_test_wav(wav_b)
+
+            with (
+                patch(
+                    "whisper_diarize.diarization.diarize",
+                    side_effect=_fake_diarize_factory(MOCK_TURNS),
+                ),
+                patch(
+                    "whisper_diarize.transcription.transcribe",
+                    side_effect=_fake_transcribe_factory(MOCK_WORDS),
+                ),
+            ):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = {
+                        pool.submit(
+                            run,
+                            wav,
+                            hf_token="fake-token",
+                            config=PipelineConfig(clean_audio=False),
+                        ): wav
+                        for wav in [wav_a, wav_b]
+                    }
+                    results = {}
+                    for future in as_completed(futures):
+                        wav = futures[future]
+                        results[wav.name] = future.result()
+
+            for name, result in results.items():
+                assert len(result.utterances) >= 1, f"{name} produced no utterances"
+                assert len(result.turns) == 2
+                assert len(result.words) == 4
+                for p in result.output_paths.values():
+                    assert p.exists()
+                    assert p.stat().st_size > 0
+
+    def test_one_file_fails_other_succeeds(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_good = Path(tmpdir) / "good.wav"
+            wav_bad = Path(tmpdir) / "bad.wav"
+            _make_test_wav(wav_good)
+            _make_test_wav(wav_bad)
+
+            def diarize_or_fail(*args, on_progress=None, **kwargs):
+                wav_path = args[0]
+                if "bad" in str(wav_path):
+                    raise RuntimeError("simulated diarization failure")
+                return _fake_diarize_factory(MOCK_TURNS)(*args, on_progress=on_progress, **kwargs)
+
+            with (
+                patch(
+                    "whisper_diarize.diarization.diarize",
+                    side_effect=diarize_or_fail,
+                ),
+                patch(
+                    "whisper_diarize.transcription.transcribe",
+                    side_effect=_fake_transcribe_factory(MOCK_WORDS),
+                ),
+            ):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = {
+                        pool.submit(
+                            run,
+                            wav,
+                            hf_token="fake-token",
+                            config=PipelineConfig(clean_audio=False),
+                        ): wav
+                        for wav in [wav_good, wav_bad]
+                    }
+                    successes = {}
+                    failures = {}
+                    for future in as_completed(futures):
+                        wav = futures[future]
+                        try:
+                            successes[wav.name] = future.result()
+                        except RuntimeError:
+                            failures[wav.name] = True
+
+            assert "good.wav" in successes
+            assert len(successes["good.wav"].utterances) >= 1
+            assert "bad.wav" in failures

@@ -1,5 +1,5 @@
 """
-sales-agent: Diarized transcription using Whisper + pyannote.audio.
+whisper-diarize: Diarized transcription using Whisper + pyannote.audio.
 
 Example usage:
     from whisper_diarize import run, PipelineConfig

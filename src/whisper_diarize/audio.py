@@ -19,6 +19,22 @@ StageProgressFn = Callable[[str, float], None]
 
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".flv", ".m4v"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"})
+SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+
+
+def find_media_files(directory: Path, recursive: bool = False) -> list[Path]:
+    """Find supported audio/video files in a directory.
+
+    Returns sorted list of paths with supported extensions.
+    """
+    pattern = "**/*" if recursive else "*"
+    files = [
+        p
+        for p in directory.glob(pattern)
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+    ]
+    files.sort()
+    return files
 
 
 def is_video(path: Path) -> bool:

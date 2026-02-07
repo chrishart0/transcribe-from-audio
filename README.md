@@ -5,6 +5,12 @@ Local diarized transcription using **faster-whisper** (Whisper large-v3 via CTra
 ## Installation
 
 ```bash
+pip install whisper-diarize
+```
+
+For development:
+
+```bash
 uv sync --all-extras
 ```
 
@@ -16,16 +22,22 @@ cp .env.example .env
 # Edit .env with your Hugging Face token
 
 # Basic usage
-uv run transcribe audio.mp3 --hf-token YOUR_HUGGINGFACE_TOKEN
+transcribe audio.mp3 --hf-token YOUR_HUGGINGFACE_TOKEN
 
-# With audio cleanup and save cleaned version
-uv run transcribe audio.mp3 --hf-token $HF_TOKEN --save-cleaned
+# Process a whole folder
+transcribe ./recordings/ --hf-token $HF_TOKEN
+
+# Recursive folder processing with output directory
+transcribe ./recordings/ --recursive --output-dir ./transcripts/
+
+# Process multiple files concurrently
+transcribe ./recordings/ --workers 3
 
 # CPU-only mode
-uv run transcribe audio.mp3 --hf-token $HF_TOKEN --device cpu --compute-type int8
+transcribe audio.mp3 --hf-token $HF_TOKEN --device cpu --compute-type int8
 
 # Specify number of speakers
-uv run transcribe audio.mp3 --hf-token $HF_TOKEN --num-speakers 2
+transcribe audio.mp3 --hf-token $HF_TOKEN --num-speakers 2
 ```
 
 ## CLI Options
@@ -37,6 +49,8 @@ uv run transcribe audio.mp3 --hf-token $HF_TOKEN --num-speakers 2
 | `--model` | `large-v3` | Whisper model size |
 | `--compute-type` | `int8_float16` | CTranslate2 compute type |
 | `--language` | auto | Language code (e.g., `en`, `es`) |
+| `--output-dir` | next to input | Directory for output files |
+| `--recursive` | false | Search subdirectories when input is a directory |
 | `--no-clean` | false | Skip audio preprocessing |
 | `--save-cleaned` | false | Save cleaned audio as `.cleaned.wav` |
 | `--highpass` | `80` | High-pass filter frequency (Hz) |
@@ -44,6 +58,8 @@ uv run transcribe audio.mp3 --hf-token $HF_TOKEN --num-speakers 2
 | `--num-speakers` | auto | Exact number of speakers |
 | `--min-speakers` | none | Minimum expected speakers |
 | `--max-speakers` | none | Maximum expected speakers |
+| `--workers` | `1` | Number of files to process concurrently (for directory input) |
+| `--no-parallel` | false | Disable parallel diarization/transcription per file |
 
 ## Output Files
 

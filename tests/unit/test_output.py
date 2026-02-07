@@ -69,6 +69,19 @@ class TestWriteAll:
         data = json.loads(outputs["json"].read_text())
         assert len(data) == 2
 
+    def test_multi_dot_filename(self, tmp_path: Path):
+        out_base = tmp_path / "my.recording"
+        utterances = [
+            Utterance(start_s=0.0, end_s=1.0, speaker="A", text="Hello"),
+        ]
+        outputs = write_all(out_base, utterances)
+
+        assert outputs["json"].name == "my.recording.diarized.json"
+        assert outputs["txt"].name == "my.recording.diarized.txt"
+        assert outputs["srt"].name == "my.recording.diarized.srt"
+        for p in outputs.values():
+            assert p.exists()
+
     def test_empty_utterances(self, tmp_path: Path):
         out_base = tmp_path / "empty"
         outputs = write_all(out_base, [])

@@ -2,8 +2,93 @@
 
 from __future__ import annotations
 
-from whisper_diarize.alignment import align_words_to_speakers, find_speaker_at_time
+from whisper_diarize.alignment import align_words_to_speakers, find_speaker_at_time, smooth_turns
 from whisper_diarize.models import SpeakerTurn, WordItem
+
+
+class TestSmoothTurns:
+    def test_removes_short_turns(self):
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.0, end_s=5.3, speaker="B"),  # 0.3s — too short
+            SpeakerTurn(start_s=5.3, end_s=10.0, speaker="A"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.5, merge_gap_s=0.0, flicker_s=0.0)
+        assert len(result) == 2
+        assert all(t.speaker == "A" for t in result)
+
+    def test_merges_same_speaker_gaps(self):
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.2, end_s=10.0, speaker="A"),  # 0.2s gap
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.3, flicker_s=0.0)
+        assert len(result) == 1
+        assert result[0].start_s == 0.0
+        assert result[0].end_s == 10.0
+        assert result[0].speaker == "A"
+
+    def test_does_not_merge_different_speakers(self):
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.1, end_s=10.0, speaker="B"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.3, flicker_s=0.0)
+        assert len(result) == 2
+
+    def test_does_not_merge_large_gap(self):
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.5, end_s=10.0, speaker="A"),  # 0.5s gap > 0.3 threshold
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.3, flicker_s=0.0)
+        assert len(result) == 2
+
+    def test_fixes_flicker(self):
+        # A→B→A where B is short (0.5s < 1.0s flicker threshold)
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.0, end_s=5.5, speaker="B"),  # flicker
+            SpeakerTurn(start_s=5.5, end_s=10.0, speaker="A"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.0, flicker_s=1.0)
+        assert len(result) == 1
+        assert result[0].speaker == "A"
+        assert result[0].start_s == 0.0
+        assert result[0].end_s == 10.0
+
+    def test_does_not_fix_long_flicker(self):
+        # B turn is 1.5s which exceeds flicker_s=1.0
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.0, end_s=6.5, speaker="B"),
+            SpeakerTurn(start_s=6.5, end_s=10.0, speaker="A"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.0, flicker_s=1.0)
+        assert len(result) == 3
+
+    def test_empty_turns(self):
+        assert smooth_turns([]) == []
+
+    def test_zero_thresholds_is_noop(self):
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=0.1, speaker="A"),
+            SpeakerTurn(start_s=0.1, end_s=0.2, speaker="B"),
+            SpeakerTurn(start_s=0.2, end_s=0.3, speaker="A"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.0, merge_gap_s=0.0, flicker_s=0.0)
+        assert len(result) == 3
+
+    def test_all_passes_combined(self):
+        # Short B turn gets removed, then A turns get merged
+        turns = [
+            SpeakerTurn(start_s=0.0, end_s=5.0, speaker="A"),
+            SpeakerTurn(start_s=5.0, end_s=5.2, speaker="B"),  # short: removed
+            SpeakerTurn(start_s=5.2, end_s=10.0, speaker="A"),
+        ]
+        result = smooth_turns(turns, min_turn_s=0.5, merge_gap_s=0.3, flicker_s=1.0)
+        assert len(result) == 1
+        assert result[0].speaker == "A"
 
 
 class TestFindSpeakerAtTime:

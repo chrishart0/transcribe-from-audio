@@ -4126,7 +4126,7 @@ requires-dist = [
     { name = "librosa", specifier = ">=0.10.0" },
     { name = "noisereduce", specifier = ">=3.0.3" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "pyannote-audio", specifier = ">=3.4.0" },
+    { name = "pyannote-audio", specifier = ">=4.0.0" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.390" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },

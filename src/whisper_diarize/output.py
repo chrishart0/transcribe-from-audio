@@ -62,15 +62,15 @@ def write_all(out_base: Path, utterances: list[Utterance]) -> dict[str, Path]:
     """
     outputs = {}
 
-    json_path = out_base.with_suffix(".diarized.json")
+    json_path = Path(str(out_base) + ".diarized.json")
     json_path.write_text(to_json(utterances), encoding="utf-8")
     outputs["json"] = json_path
 
-    txt_path = out_base.with_suffix(".diarized.txt")
+    txt_path = Path(str(out_base) + ".diarized.txt")
     txt_path.write_text(to_text(utterances), encoding="utf-8")
     outputs["txt"] = txt_path
 
-    srt_path = out_base.with_suffix(".diarized.srt")
+    srt_path = Path(str(out_base) + ".diarized.srt")
     srt_path.write_text(to_srt(utterances), encoding="utf-8")
     outputs["srt"] = srt_path
 

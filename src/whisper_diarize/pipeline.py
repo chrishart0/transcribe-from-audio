@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import soundfile as sf
 
 from whisper_diarize import audio, diarization, transcription
-from whisper_diarize.alignment import align_words_to_speakers
+from whisper_diarize.alignment import align_words_to_speakers, smooth_turns
 from whisper_diarize.models import Utterance
 from whisper_diarize.output import write_all
 
@@ -146,10 +146,17 @@ class PipelineConfig:
     language: str | None = None
 
     # Diarization
-    diarization_model: str = "pyannote/speaker-diarization-3.1"
+    diarization_model: str = "pyannote/speaker-diarization-community-1"
     num_speakers: int | None = None
     min_speakers: int | None = None
     max_speakers: int | None = None
+    clustering_threshold: float | None = None
+    min_duration_off: float | None = None
+
+    # Turn smoothing
+    min_turn_s: float = 0.5
+    merge_gap_s: float = 0.3
+    flicker_s: float = 1.0
 
     # Alignment
     max_gap_s: float = 0.9
@@ -173,6 +180,7 @@ def run(
     save_cleaned: bool = False,
     on_progress: ProgressCallback | None = None,
     parallel: bool = True,
+    output_dir: Path | None = None,
 ) -> PipelineResult:
     """
     Run the full diarized transcription pipeline.
@@ -188,11 +196,17 @@ def run(
             reflects estimated wall-clock cost.
         parallel: Run diarization and transcription concurrently (default True).
             Disable if GPU memory is limited.
+        output_dir: Directory for output files. Created if it doesn't exist.
+            When None, outputs are written next to the input file.
     """
     if config is None:
         config = PipelineConfig()
 
-    out_base = input_path.with_suffix("")
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_base = output_dir / input_path.stem
+    else:
+        out_base = input_path.parent / input_path.stem
     is_vid = audio.is_video(input_path)
     extracted_tmp: Path | None = None
 
@@ -233,11 +247,11 @@ def run(
             on_progress=stage_report,
         )
         if save_cleaned:
-            cleaned_path = out_base.with_suffix(".cleaned.wav")
+            cleaned_path = Path(str(out_base) + ".cleaned.wav")
             sf.write(str(cleaned_path), audio_data, sr)
 
     # Save temp WAV for diarization
-    tmp_wav = out_base.with_suffix(".tmp_16k_mono.wav")
+    tmp_wav = Path(str(input_path) + ".tmp_16k_mono.wav")
     sf.write(str(tmp_wav), audio_data, sr)
 
     try:
@@ -261,6 +275,14 @@ def run(
                 tracker,
                 weights,
             )
+
+        # --- Smooth turns ---
+        turns = smooth_turns(
+            turns,
+            min_turn_s=config.min_turn_s,
+            merge_gap_s=config.merge_gap_s,
+            flicker_s=config.flicker_s,
+        )
 
         # --- Align ---
         if tracker:
@@ -328,6 +350,8 @@ def _run_diarize_transcribe_parallel(
             num_speakers=config.num_speakers,
             min_speakers=config.min_speakers,
             max_speakers=config.max_speakers,
+            clustering_threshold=config.clustering_threshold,
+            min_duration_off=config.min_duration_off,
             on_progress=diarize_report,
         )
         transcribe_future = pool.submit(
@@ -365,6 +389,8 @@ def _run_diarize_transcribe_sequential(
         num_speakers=config.num_speakers,
         min_speakers=config.min_speakers,
         max_speakers=config.max_speakers,
+        clustering_threshold=config.clustering_threshold,
+        min_duration_off=config.min_duration_off,
         on_progress=stage_report,
     )
 
