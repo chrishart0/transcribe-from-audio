@@ -43,12 +43,52 @@ def main() -> None:
     parser.add_argument(
         "--device", type=str, default="cuda", choices=["cuda", "cpu"], help="Device for inference"
     )
-    parser.add_argument("--model", type=str, default="large-v3", help="Whisper model size")
     parser.add_argument(
-        "--compute-type", type=str, default="int8_float16", help="CTranslate2 compute type"
+        "--profile",
+        type=str,
+        default="accuracy",
+        choices=["accuracy", "balanced", "speed"],
+        help="Transcription profile preset",
+    )
+    parser.add_argument("--model", type=str, default=None, help="Whisper model size or HF model ID")
+    parser.add_argument(
+        "--compute-type",
+        type=str,
+        default=None,
+        help="CTranslate2 compute type (profile default when omitted)",
     )
     parser.add_argument(
         "--language", type=str, default=None, help="Language code (auto-detect if not set)"
+    )
+    parser.add_argument(
+        "--beam-size",
+        type=int,
+        default=None,
+        help="Beam search size (profile default when omitted)",
+    )
+    parser.add_argument(
+        "--condition-on-previous-text",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Condition each segment on previous text (can increase repetition on long audio)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Decoding temperature override (omit to keep built-in fallback schedule)",
+    )
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=None,
+        help="Penalty for repeated token generation (>1.0 discourages loops)",
+    )
+    parser.add_argument(
+        "--no-repeat-ngram-size",
+        type=int,
+        default=None,
+        help="Prevent repeating n-grams of this size (0 disables)",
     )
 
     # Audio cleaning
@@ -87,6 +127,13 @@ def main() -> None:
         default=None,
         help="Override pyannote minimum inter-turn silence duration (seconds)",
     )
+    parser.add_argument(
+        "--alignment-mode",
+        type=str,
+        default=None,
+        choices=["accurate", "fast"],
+        help="Alignment/smoothing behavior (profile default when omitted)",
+    )
 
     # Output
     parser.add_argument(
@@ -110,14 +157,25 @@ def main() -> None:
     parser.add_argument(
         "--workers",
         type=int,
-        default=1,
-        help="Number of files to process concurrently (for directory input)",
+        default=0,
+        help="Number of files to process concurrently (0 = auto by available VRAM)",
+    )
+    parser.add_argument(
+        "--no-retry-sequential",
+        action="store_true",
+        help="Disable sequential retry when parallel run fails due to memory pressure",
     )
 
     args = parser.parse_args()
 
-    if args.workers < 1:
-        parser.error("--workers must be >= 1")
+    if args.workers < 0:
+        parser.error("--workers must be >= 0")
+    if args.beam_size is not None and args.beam_size < 1:
+        parser.error("--beam-size must be >= 1")
+    if args.repetition_penalty is not None and args.repetition_penalty < 1.0:
+        parser.error("--repetition-penalty must be >= 1.0")
+    if args.no_repeat_ngram_size is not None and args.no_repeat_ngram_size < 0:
+        parser.error("--no-repeat-ngram-size must be >= 0")
 
     load_dotenv()
     hf_token = args.hf_token or os.environ.get("HF_TOKEN")
@@ -146,23 +204,54 @@ def main() -> None:
         clean_audio=not args.no_clean,
         highpass_freq=args.highpass,
         noise_reduction_strength=args.noise_reduction,
-        whisper_model=args.model,
         device=args.device,
-        compute_type=args.compute_type,
+        profile=args.profile,
         language=args.language,
         num_speakers=args.num_speakers,
         min_speakers=args.min_speakers,
         max_speakers=args.max_speakers,
         clustering_threshold=args.clustering_threshold,
         min_duration_off=args.min_duration_off,
+        retry_sequential_on_failure=not args.no_retry_sequential,
     )
+    if args.model is not None:
+        config_kwargs["whisper_model"] = args.model
+    if args.compute_type is not None:
+        config_kwargs["compute_type"] = args.compute_type
+    if args.beam_size is not None:
+        config_kwargs["beam_size"] = args.beam_size
+    if args.condition_on_previous_text is not None:
+        config_kwargs["condition_on_previous_text"] = args.condition_on_previous_text
+    if args.temperature is not None:
+        config_kwargs["temperature"] = args.temperature
+    if args.repetition_penalty is not None:
+        config_kwargs["repetition_penalty"] = args.repetition_penalty
+    if args.no_repeat_ngram_size is not None:
+        config_kwargs["no_repeat_ngram_size"] = args.no_repeat_ngram_size
+    if args.alignment_mode is not None:
+        config_kwargs["alignment_mode"] = args.alignment_mode
     if args.diarization_model is not None:
         config_kwargs["diarization_model"] = args.diarization_model
-    config = PipelineConfig(**config_kwargs)
+    config = pipeline.resolve_runtime_config(PipelineConfig(**config_kwargs))
 
     output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
+    vram_gb = pipeline.detect_cuda_total_memory_gb()
 
-    workers = min(args.workers, len(files))
+    if args.workers == 0:
+        workers = pipeline.recommend_worker_count(len(files), config, vram_gb)
+    else:
+        workers = min(args.workers, len(files))
+
+    vram_text = f"{vram_gb:.1f} GB" if vram_gb is not None else "n/a"
+    console.print(
+        "[dim]Resolved runtime: "
+        f"profile={config.profile}, device={config.device}, vram={vram_text}, "
+        f"model={config.whisper_model}, compute={config.compute_type}, beam={config.beam_size}, "
+        f"cond_prev={config.condition_on_previous_text}, temp={config.temperature}, "
+        f"rep_pen={config.repetition_penalty}, no_repeat_ngram={config.no_repeat_ngram_size}, "
+        f"alignment={config.alignment_mode}, workers={workers}, parallel={not args.no_parallel}, "
+        f"retry_sequential={not args.no_retry_sequential}[/dim]"
+    )
 
     if workers == 1:
         _process_files_sequential(files, hf_token, config, args, output_dir)

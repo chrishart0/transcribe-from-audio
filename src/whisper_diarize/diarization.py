@@ -15,6 +15,7 @@ def diarize(
     wav_path: Path,
     token: str,
     model_id: str = "pyannote/speaker-diarization-community-1",
+    device: str = "cuda",
     num_speakers: int | None = None,
     min_speakers: int | None = None,
     max_speakers: int | None = None,
@@ -29,6 +30,7 @@ def diarize(
         wav_path: Path to WAV file (16kHz mono recommended)
         token: Hugging Face token for pyannote models
         model_id: Diarization model to use
+        device: Device for inference ("cuda" or "cpu")
         num_speakers: Exact number of speakers (if known)
         min_speakers: Minimum expected speakers
         max_speakers: Maximum expected speakers
@@ -41,9 +43,25 @@ def diarize(
 
     if on_progress:
         on_progress("Loading diarization model", 0.0)
-    pipeline = Pipeline.from_pretrained(model_id, token=token)  # type: ignore[call-arg]
+    try:
+        pipeline = Pipeline.from_pretrained(model_id, token=token)  # type: ignore[call-arg]
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to load diarization model. Verify --hf-token has access to "
+            f"'{model_id}' and that model terms are accepted on Hugging Face."
+        ) from exc
     if pipeline is None:
         raise RuntimeError(f"Failed to load diarization model: {model_id}")
+
+    if device == "cuda":
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                pipeline.to(torch.device("cuda"))
+        except Exception:
+            # Fall back silently to CPU when CUDA setup is incomplete.
+            pass
 
     if clustering_threshold is not None or min_duration_off is not None:
         params = pipeline.parameters(instantiated=True)
@@ -63,7 +81,10 @@ def diarize(
 
     if on_progress:
         on_progress("Diarizing speakers", 0.15)
-    result = pipeline(str(wav_path), **diarization_args)  # type: ignore[arg-type]
+    try:
+        result = pipeline(str(wav_path), **diarization_args)  # type: ignore[arg-type]
+    except Exception as exc:
+        raise RuntimeError("Diarization inference failed.") from exc
 
     # Prefer exclusive (non-overlapping) segments for cleaner alignment with
     # Whisper's single text stream. Falls back to overlapping then raw result.

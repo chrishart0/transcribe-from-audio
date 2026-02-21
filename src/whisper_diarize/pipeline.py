@@ -15,6 +15,15 @@ from whisper_diarize import audio, diarization, transcription
 from whisper_diarize.alignment import align_words_to_speakers, smooth_turns
 from whisper_diarize.models import Utterance
 from whisper_diarize.output import write_all
+from whisper_diarize.runtime_config import (
+    detect_cuda_total_memory_gb as _detect_cuda_total_memory_gb,
+)
+from whisper_diarize.runtime_config import (
+    recommend_worker_count as _recommend_worker_count,
+)
+from whisper_diarize.runtime_config import (
+    resolve_runtime_config as _resolve_runtime_config_impl,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -40,6 +49,32 @@ _WEIGHT_WRITE = 1.0
 _WEIGHT_CLEAN_PER_MIN = 1.5
 _WEIGHT_DIARIZE_PER_MIN = 3.0
 _WEIGHT_TRANSCRIBE_PER_MIN = 5.0
+
+_OOM_RETRY_HINTS = (
+    "out of memory",
+    "cuda error: out of memory",
+    "cublas_status_alloc_failed",
+    "cudnn_status_alloc_failed",
+    "not enough memory",
+)
+
+_FAST_ALIGNMENT_DEFAULTS = {
+    "min_turn_s": 0.35,
+    "merge_gap_s": 0.5,
+    "flicker_s": 0.8,
+    "max_gap_s": 1.2,
+    "gap_tolerance": 0.7,
+}
+
+
+def detect_cuda_total_memory_gb() -> float | None:
+    """Return total VRAM in GB for CUDA device 0, or None when unavailable."""
+    return _detect_cuda_total_memory_gb()
+
+
+def recommend_worker_count(file_count: int, config: PipelineConfig, vram_gb: float | None) -> int:
+    """Recommend directory worker count from profile and available VRAM."""
+    return _recommend_worker_count(file_count, config, vram_gb)
 
 
 def _compute_weights(
@@ -140,10 +175,17 @@ class PipelineConfig:
     noise_reduction_strength: float = 0.8
 
     # Transcription
-    whisper_model: str = "large-v3"
+    profile: str = "accuracy"
+    whisper_model: str | None = None
     device: str = "cuda"
-    compute_type: str = "int8_float16"
+    compute_type: str | None = None
     language: str | None = None
+    beam_size: int | None = None
+    vad_filter: bool | None = None
+    condition_on_previous_text: bool | None = None
+    temperature: float | tuple[float, ...] | list[float] | None = None
+    repetition_penalty: float | None = None
+    no_repeat_ngram_size: int | None = None
 
     # Diarization
     diarization_model: str = "pyannote/speaker-diarization-community-1"
@@ -159,8 +201,63 @@ class PipelineConfig:
     flicker_s: float = 1.0
 
     # Alignment
+    alignment_mode: str | None = None
     max_gap_s: float = 0.9
     gap_tolerance: float = 0.5
+
+    # Execution behavior
+    retry_sequential_on_failure: bool = True
+    # Internal flag to avoid duplicate runtime-resolution passes.
+    _resolved: bool = field(default=False, repr=False, compare=False)
+
+
+def _resolve_runtime_config(config: PipelineConfig) -> PipelineConfig:
+    """Apply profile defaults while preserving explicit user overrides."""
+    return _resolve_runtime_config_impl(config)
+
+
+def resolve_runtime_config(config: PipelineConfig) -> PipelineConfig:
+    """Public wrapper for runtime config resolution."""
+    return _resolve_runtime_config_impl(config)
+
+
+def _effective_alignment_params(config: PipelineConfig) -> tuple[float, float, float, float, float]:
+    """Build alignment/smoothing parameters based on alignment mode."""
+    if config.alignment_mode != "fast":
+        return (
+            config.min_turn_s,
+            config.merge_gap_s,
+            config.flicker_s,
+            config.max_gap_s,
+            config.gap_tolerance,
+        )
+
+    min_turn_s = (
+        _FAST_ALIGNMENT_DEFAULTS["min_turn_s"] if config.min_turn_s == 0.5 else config.min_turn_s
+    )
+    merge_gap_s = (
+        _FAST_ALIGNMENT_DEFAULTS["merge_gap_s"] if config.merge_gap_s == 0.3 else config.merge_gap_s
+    )
+    flicker_s = (
+        _FAST_ALIGNMENT_DEFAULTS["flicker_s"] if config.flicker_s == 1.0 else config.flicker_s
+    )
+    max_gap_s = (
+        _FAST_ALIGNMENT_DEFAULTS["max_gap_s"] if config.max_gap_s == 0.9 else config.max_gap_s
+    )
+    gap_tolerance = (
+        _FAST_ALIGNMENT_DEFAULTS["gap_tolerance"]
+        if config.gap_tolerance == 0.5
+        else config.gap_tolerance
+    )
+    return min_turn_s, merge_gap_s, flicker_s, max_gap_s, gap_tolerance
+
+
+def _should_retry_sequential(exc: Exception) -> bool:
+    """Return True when a failed parallel run should retry sequentially."""
+    error_text = str(exc).lower()
+    if any(token in error_text for token in _OOM_RETRY_HINTS):
+        return True
+    return False
 
 
 @dataclass
@@ -201,6 +298,16 @@ def run(
     """
     if config is None:
         config = PipelineConfig()
+    if not config._resolved:
+        config = _resolve_runtime_config(config)
+    assert config.whisper_model is not None
+    assert config.compute_type is not None
+    assert config.beam_size is not None
+    assert config.vad_filter is not None
+    assert config.condition_on_previous_text is not None
+    assert config.repetition_penalty is not None
+    assert config.no_repeat_ngram_size is not None
+    assert config.alignment_mode is not None
 
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -256,15 +363,29 @@ def run(
 
     try:
         if parallel:
-            turns, words = _run_diarize_transcribe_parallel(
-                tmp_wav,
-                audio_data,
-                sr,
-                hf_token,
-                config,
-                tracker,
-                weights,
-            )
+            try:
+                turns, words = _run_diarize_transcribe_parallel(
+                    tmp_wav,
+                    audio_data,
+                    sr,
+                    hf_token,
+                    config,
+                    tracker,
+                    weights,
+                )
+            except Exception as exc:
+                if config.retry_sequential_on_failure and _should_retry_sequential(exc):
+                    turns, words = _run_diarize_transcribe_sequential(
+                        tmp_wav,
+                        audio_data,
+                        sr,
+                        hf_token,
+                        config,
+                        None,
+                        weights,
+                    )
+                else:
+                    raise
         else:
             turns, words = _run_diarize_transcribe_sequential(
                 tmp_wav,
@@ -277,11 +398,14 @@ def run(
             )
 
         # --- Smooth turns ---
+        min_turn_s, merge_gap_s, flicker_s, max_gap_s, gap_tolerance = _effective_alignment_params(
+            config
+        )
         turns = smooth_turns(
             turns,
-            min_turn_s=config.min_turn_s,
-            merge_gap_s=config.merge_gap_s,
-            flicker_s=config.flicker_s,
+            min_turn_s=min_turn_s,
+            merge_gap_s=merge_gap_s,
+            flicker_s=flicker_s,
         )
 
         # --- Align ---
@@ -291,8 +415,8 @@ def run(
         utterances = align_words_to_speakers(
             turns,
             words,
-            max_gap_s=config.max_gap_s,
-            gap_tolerance=config.gap_tolerance,
+            max_gap_s=max_gap_s,
+            gap_tolerance=gap_tolerance,
         )
         if tracker:
             report("Aligning words to speakers", 1.0)
@@ -328,6 +452,16 @@ def _run_diarize_transcribe_parallel(
     weights: dict[str, float],
 ) -> tuple[list[SpeakerTurn], list[WordItem]]:
     """Run diarization and transcription concurrently."""
+    if not config._resolved:
+        config = _resolve_runtime_config(config)
+    assert config.whisper_model is not None
+    assert config.compute_type is not None
+    assert config.beam_size is not None
+    assert config.vad_filter is not None
+    assert config.condition_on_previous_text is not None
+    assert config.repetition_penalty is not None
+    assert config.no_repeat_ngram_size is not None
+
     if tracker:
         reporters = tracker.parallel_stages(
             {
@@ -347,6 +481,7 @@ def _run_diarize_transcribe_parallel(
             tmp_wav,
             token=hf_token,
             model_id=config.diarization_model,
+            device=config.device,
             num_speakers=config.num_speakers,
             min_speakers=config.min_speakers,
             max_speakers=config.max_speakers,
@@ -362,6 +497,12 @@ def _run_diarize_transcribe_parallel(
             device=config.device,
             compute_type=config.compute_type,
             language=config.language,
+            beam_size=config.beam_size,
+            vad_filter=config.vad_filter,
+            condition_on_previous_text=config.condition_on_previous_text,
+            temperature=config.temperature,
+            repetition_penalty=config.repetition_penalty,
+            no_repeat_ngram_size=config.no_repeat_ngram_size,
             on_progress=transcribe_report,
         )
 
@@ -381,11 +522,22 @@ def _run_diarize_transcribe_sequential(
     weights: dict[str, float],
 ) -> tuple[list[SpeakerTurn], list[WordItem]]:
     """Run diarization then transcription sequentially."""
+    if not config._resolved:
+        config = _resolve_runtime_config(config)
+    assert config.whisper_model is not None
+    assert config.compute_type is not None
+    assert config.beam_size is not None
+    assert config.vad_filter is not None
+    assert config.condition_on_previous_text is not None
+    assert config.repetition_penalty is not None
+    assert config.no_repeat_ngram_size is not None
+
     stage_report = tracker.stage(weights["diarize"]) if tracker else None
     turns = diarization.diarize(
         tmp_wav,
         token=hf_token,
         model_id=config.diarization_model,
+        device=config.device,
         num_speakers=config.num_speakers,
         min_speakers=config.min_speakers,
         max_speakers=config.max_speakers,
@@ -402,6 +554,12 @@ def _run_diarize_transcribe_sequential(
         device=config.device,
         compute_type=config.compute_type,
         language=config.language,
+        beam_size=config.beam_size,
+        vad_filter=config.vad_filter,
+        condition_on_previous_text=config.condition_on_previous_text,
+        temperature=config.temperature,
+        repetition_penalty=config.repetition_penalty,
+        no_repeat_ngram_size=config.no_repeat_ngram_size,
         on_progress=stage_report,
     )
 

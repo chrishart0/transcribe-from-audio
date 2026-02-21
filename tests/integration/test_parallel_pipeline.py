@@ -269,6 +269,65 @@ class TestParallelPipelineIntegration:
             tmp_wav = Path(tmpdir) / "test.wav.tmp_16k_mono.wav"
             assert not tmp_wav.exists()
 
+    def test_parallel_oom_retries_sequential(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "test.wav"
+            _make_test_wav(wav_path)
+            diarize_calls = {"count": 0}
+
+            def diarize_oom_then_ok(*args, on_progress=None, **kwargs):
+                diarize_calls["count"] += 1
+                if diarize_calls["count"] == 1:
+                    raise RuntimeError("CUDA out of memory while running diarization")
+                return _fake_diarize_factory(MOCK_TURNS)(*args, on_progress=on_progress, **kwargs)
+
+            with (
+                patch(
+                    "whisper_diarize.diarization.diarize",
+                    side_effect=diarize_oom_then_ok,
+                ),
+                patch(
+                    "whisper_diarize.transcription.transcribe",
+                    side_effect=_fake_transcribe_factory(MOCK_WORDS),
+                ),
+            ):
+                result = run(
+                    wav_path,
+                    hf_token="fake-token",
+                    config=PipelineConfig(clean_audio=False, retry_sequential_on_failure=True),
+                    parallel=True,
+                )
+
+            assert diarize_calls["count"] == 2
+            assert len(result.utterances) >= 1
+            assert len(result.output_paths) == 3
+
+    def test_parallel_oom_no_retry_raises(self):
+        with TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "test.wav"
+            _make_test_wav(wav_path)
+
+            with (
+                patch(
+                    "whisper_diarize.diarization.diarize",
+                    side_effect=RuntimeError("CUDA out of memory while running diarization"),
+                ),
+                patch(
+                    "whisper_diarize.transcription.transcribe",
+                    side_effect=_fake_transcribe_factory(MOCK_WORDS),
+                ),
+            ):
+                with pytest.raises(RuntimeError, match="out of memory"):
+                    run(
+                        wav_path,
+                        hf_token="fake-token",
+                        config=PipelineConfig(
+                            clean_audio=False,
+                            retry_sequential_on_failure=False,
+                        ),
+                        parallel=True,
+                    )
+
 
 @pytest.mark.integration
 class TestOutputDir:

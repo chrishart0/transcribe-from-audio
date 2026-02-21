@@ -12,7 +12,10 @@ import pytest
 from whisper_diarize.pipeline import (
     PipelineConfig,
     _compute_weights,
+    _resolve_runtime_config,
+    _should_retry_sequential,
     _StageTracker,
+    recommend_worker_count,
 )
 
 
@@ -214,6 +217,100 @@ class TestStageTrackerParallel:
         assert calls[-1] == pytest.approx(1.0, abs=0.02)
 
 
+class TestRuntimeConfig:
+    def test_default_profile_maps_to_openai_large_v3(self):
+        resolved = _resolve_runtime_config(PipelineConfig())
+        assert resolved.whisper_model == "openai/whisper-large-v3"
+        assert resolved.alignment_mode == "accurate"
+        assert resolved.condition_on_previous_text is False
+        assert resolved.repetition_penalty == pytest.approx(1.02)
+        assert resolved.no_repeat_ngram_size == 2
+
+    def test_balanced_profile_changes_model_when_using_defaults(self):
+        resolved = _resolve_runtime_config(PipelineConfig(profile="balanced"))
+        assert resolved.whisper_model == "openai/whisper-large-v3-turbo"
+
+    def test_profile_does_not_override_explicit_model(self):
+        resolved = _resolve_runtime_config(
+            PipelineConfig(
+                profile="balanced",
+                whisper_model="distil-whisper/distil-large-v3.5",
+            )
+        )
+        assert resolved.whisper_model == "distil-whisper/distil-large-v3.5"
+
+    def test_explicit_model_equal_to_old_default_is_respected(self):
+        resolved = _resolve_runtime_config(
+            PipelineConfig(
+                profile="balanced",
+                whisper_model="large-v3",
+            )
+        )
+        assert resolved.whisper_model == "large-v3"
+
+    def test_invalid_profile_raises(self):
+        with pytest.raises(ValueError, match="Unknown profile"):
+            _resolve_runtime_config(PipelineConfig(profile="invalid"))
+
+    def test_invalid_alignment_mode_raises(self):
+        with pytest.raises(ValueError, match="Unknown alignment_mode"):
+            _resolve_runtime_config(PipelineConfig(alignment_mode="slow"))
+
+    def test_high_vram_uses_float16_and_higher_beam_for_accuracy(self):
+        with patch("whisper_diarize.runtime_config.detect_cuda_total_memory_gb", return_value=24.0):
+            resolved = _resolve_runtime_config(PipelineConfig(profile="accuracy"))
+        assert resolved.compute_type == "float16"
+        assert resolved.beam_size == 12
+
+    def test_explicit_beam_size_equal_to_old_default_is_respected(self):
+        with patch("whisper_diarize.runtime_config.detect_cuda_total_memory_gb", return_value=24.0):
+            resolved = _resolve_runtime_config(PipelineConfig(profile="accuracy", beam_size=5))
+        assert resolved.beam_size == 5
+
+    def test_explicit_compute_type_equal_to_old_default_is_respected(self):
+        with patch("whisper_diarize.runtime_config.detect_cuda_total_memory_gb", return_value=24.0):
+            resolved = _resolve_runtime_config(
+                PipelineConfig(profile="accuracy", compute_type="int8_float16")
+            )
+        assert resolved.compute_type == "int8_float16"
+
+    def test_accuracy_profile_uses_higher_beam_even_without_high_vram(self):
+        with patch("whisper_diarize.runtime_config.detect_cuda_total_memory_gb", return_value=12.0):
+            resolved = _resolve_runtime_config(PipelineConfig(profile="accuracy"))
+        assert resolved.beam_size == 8
+
+    def test_cuda_requested_but_unavailable_falls_back_to_cpu(self):
+        with patch("whisper_diarize.runtime_config.detect_cuda_total_memory_gb", return_value=None):
+            resolved = _resolve_runtime_config(PipelineConfig(device="cuda"))
+        assert resolved.device == "cpu"
+
+
+class TestSequentialRetryDecision:
+    def test_oom_error_retries(self):
+        assert _should_retry_sequential(RuntimeError("CUDA out of memory"))
+
+    def test_non_oom_error_does_not_retry(self):
+        assert not _should_retry_sequential(RuntimeError("simulated diarization failure"))
+
+
+class TestWorkerRecommendation:
+    def test_accuracy_profile_24gb_recommends_two_workers(self):
+        workers = recommend_worker_count(
+            10,
+            PipelineConfig(profile="accuracy", device="cuda"),
+            vram_gb=24.0,
+        )
+        assert workers == 2
+
+    def test_cpu_recommends_single_worker(self):
+        workers = recommend_worker_count(
+            10,
+            PipelineConfig(profile="accuracy", device="cpu"),
+            vram_gb=24.0,
+        )
+        assert workers == 1
+
+
 class TestParallelExecution:
     """Test that diarize + transcribe actually run concurrently."""
 
@@ -259,6 +356,51 @@ class TestParallelExecution:
             assert mock_t.called
             assert turns == mock_turns
             assert words == mock_words
+
+    def test_transcribe_receives_decode_controls(self):
+        """Pipeline forwards anti-repetition decode controls to transcription."""
+        from whisper_diarize.models import SpeakerTurn, WordItem
+
+        with (
+            patch(
+                "whisper_diarize.pipeline.diarization.diarize",
+                return_value=[SpeakerTurn(start_s=0.0, end_s=5.0, speaker="SPEAKER_00")],
+            ),
+            patch(
+                "whisper_diarize.pipeline.transcription.transcribe",
+                return_value=[WordItem(start_s=0.0, end_s=0.5, word="Hello")],
+            ) as mock_t,
+        ):
+            from pathlib import Path
+
+            import numpy as np
+
+            from whisper_diarize.pipeline import _run_diarize_transcribe_sequential
+
+            config = PipelineConfig(
+                condition_on_previous_text=False,
+                temperature=0.4,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=4,
+            )
+            weights = _compute_weights(1.0, False, True)
+            audio_data = np.zeros(16000, dtype=np.float32)
+
+            _run_diarize_transcribe_sequential(
+                Path("/tmp/test.wav"),
+                audio_data,
+                16000,
+                "token",
+                config,
+                None,
+                weights,
+            )
+
+            kwargs = mock_t.call_args.kwargs
+            assert kwargs["condition_on_previous_text"] is False
+            assert kwargs["temperature"] == 0.4
+            assert kwargs["repetition_penalty"] == pytest.approx(1.2)
+            assert kwargs["no_repeat_ngram_size"] == 4
 
     def test_sequential_runs_both_tasks(self):
         """Sequential mode should also produce correct results."""
