@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from whisper_diarize.models import SpeakerTurn
 
@@ -88,10 +88,13 @@ def diarize(
 
     # Prefer exclusive (non-overlapping) segments for cleaner alignment with
     # Whisper's single text stream. Falls back to overlapping then raw result.
-    annotation = getattr(
-        result,
-        "exclusive_speaker_diarization",
-        getattr(result, "speaker_diarization", result),
+    annotation = cast(
+        Any,
+        getattr(
+            result,
+            "exclusive_speaker_diarization",
+            getattr(result, "speaker_diarization", result),
+        ),
     )
 
     turns: list[SpeakerTurn] = []

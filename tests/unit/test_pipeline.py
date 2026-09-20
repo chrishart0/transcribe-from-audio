@@ -230,6 +230,10 @@ class TestRuntimeConfig:
         resolved = _resolve_runtime_config(PipelineConfig(profile="balanced"))
         assert resolved.whisper_model == "openai/whisper-large-v3-turbo"
 
+    def test_speed_profile_uses_latest_distil_whisper_model(self):
+        resolved = _resolve_runtime_config(PipelineConfig(profile="speed"))
+        assert resolved.whisper_model == "distil-whisper/distil-large-v3.5"
+
     def test_profile_does_not_override_explicit_model(self):
         resolved = _resolve_runtime_config(
             PipelineConfig(

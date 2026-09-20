@@ -52,6 +52,18 @@ transcribe audio.mp3 --hf-token $HF_TOKEN --device cpu --compute-type int8
 transcribe audio.mp3 --hf-token $HF_TOKEN --num-speakers 2
 ```
 
+### Transcription Profiles
+
+| Profile | Default model | Language coverage | Tradeoff |
+|---------|---------------|-------------------|----------|
+| `accuracy` | `openai/whisper-large-v3` | Multilingual | Best accuracy; highest VRAM use |
+| `balanced` | `openai/whisper-large-v3-turbo` | Multilingual transcription | Faster and lighter with a small accuracy tradeoff |
+| `speed` | `distil-whisper/distil-large-v3.5` | English only | Fastest default; slightly weaker on long-form audio than turbo |
+
+The OpenAI and Distil-Whisper names above are resolved to CTranslate2 checkpoints that
+faster-whisper can load. Use `balanced` instead of `speed` for non-English audio. Whisper Turbo
+is intended for transcription; use `accuracy` if speech-to-English translation quality matters.
+
 ## CLI Options
 
 | Option | Default | Description |
@@ -139,6 +151,8 @@ whisper_diarize/
 ## Requirements
 
 - Python 3.10+
+- `faster-whisper` 1.2.1+ (includes `distil-large-v3.5` support and the current VAD model)
+- `pyannote.audio` 4.0+ (required by the Community-1 pipeline)
 - Hugging Face token with access to:
   - `pyannote/speaker-diarization-community-1`
 - NVIDIA GPU recommended (CPU works but slower)

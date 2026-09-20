@@ -8,11 +8,21 @@ from whisper_diarize.transcription import resolve_model_id
 
 
 class TestResolveModelId:
-    def test_maps_known_aliases(self):
-        assert resolve_model_id("large-v3") == "large-v3"
-        assert resolve_model_id("openai/whisper-large-v3") == "large-v3"
-        assert resolve_model_id("large-v3-turbo") == "large-v3-turbo"
-        assert resolve_model_id("distil-whisper/distil-large-v3.5") == "distil-large-v3.5"
+    @pytest.mark.parametrize(
+        ("model_name", "expected"),
+        [
+            ("large-v3", "large-v3"),
+            ("openai/whisper-large-v3", "large-v3"),
+            ("large-v3-turbo", "large-v3-turbo"),
+            ("openai/whisper-large-v3-turbo", "large-v3-turbo"),
+            ("distil-large-v3", "distil-large-v3"),
+            ("distil-whisper/distil-large-v3", "distil-large-v3"),
+            ("distil-large-v3.5", "distil-large-v3.5"),
+            ("distil-whisper/distil-large-v3.5", "distil-large-v3.5"),
+        ],
+    )
+    def test_maps_known_aliases(self, model_name: str, expected: str):
+        assert resolve_model_id(model_name) == expected
 
     def test_passthrough_for_explicit_hf_id(self):
         model_id = "my-org/custom-whisper-model"
