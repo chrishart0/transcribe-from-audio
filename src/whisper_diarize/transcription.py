@@ -41,6 +41,31 @@ def resolve_model_id(model_size: str) -> str:
     return _MODEL_ALIASES.get(model, model)
 
 
+def is_qwen_asr_model(model_size: str) -> bool:
+    """Return True when the model ID should use the Qwen3-ASR backend."""
+    lowered = model_size.strip().lower()
+    return "qwen3-asr" in lowered
+
+
+def words_from_transcript(text: str, start_s: float, end_s: float) -> list[WordItem]:
+    """Split transcript text into words and spread them across a time span."""
+    tokens = text.split()
+    if not tokens:
+        return []
+    if len(tokens) == 1:
+        return [WordItem(start_s=start_s, end_s=end_s, word=tokens[0])]
+    duration = max(end_s - start_s, 0.0)
+    step = duration / len(tokens)
+    return [
+        WordItem(
+            start_s=start_s + (step * i),
+            end_s=start_s + (step * (i + 1)),
+            word=token,
+        )
+        for i, token in enumerate(tokens)
+    ]
+
+
 def transcribe(
     audio: NDArray[np.floating],
     sr: int,
@@ -78,9 +103,20 @@ def transcribe(
             Model loading is ~10% of the cost, segment transcription scales
             linearly with audio duration covering the remaining ~90%.
     """
-    from faster_whisper import WhisperModel
-
     resolved_model = resolve_model_id(model_size)
+    if is_qwen_asr_model(resolved_model):
+        from whisper_diarize.qwen_asr import transcribe as transcribe_qwen
+
+        return transcribe_qwen(
+            audio,
+            sr,
+            model_size=resolved_model,
+            device=device,
+            language=language,
+            on_progress=on_progress,
+        )
+
+    from faster_whisper import WhisperModel
 
     if on_progress:
         on_progress("Loading transcription model", 0.0)

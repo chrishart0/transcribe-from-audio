@@ -1,6 +1,6 @@
 # whisper-diarize
 
-Local diarized transcription using **faster-whisper** (Whisper-family models via CTranslate2) and **pyannote.audio** for speaker diarization.
+Local diarized transcription using **Qwen3-ASR** (accuracy, English), **faster-whisper** (balanced/speed), and **pyannote.audio** for speaker diarization.
 
 ## Installation
 
@@ -96,7 +96,8 @@ is intended for transcription; use `accuracy` if speech-to-English translation q
 ### GPU Auto-Tuning
 
 - On CUDA systems, runtime config is auto-tuned from available VRAM.
-- `accuracy` profile now favors higher-quality decoding by default (larger beam, less restrictive anti-repeat penalties).
+- `accuracy` uses `Qwen/Qwen3-ASR-1.7B-hf` (English-first). Requires `transformers>=5.13`.
+- `balanced` uses Whisper large-v3-turbo. `speed` uses Distil-Whisper large-v3.5 (English-only).
 - With high VRAM (for example 24GB), `accuracy` profile automatically prefers more aggressive settings (e.g. `float16`, even larger beam size).
 - For directory inputs, `--workers 0` auto-selects concurrency from VRAM and profile.
 - Anti-repetition defaults are tuned for long-form audio (`condition_on_previous_text=False`, repetition penalty, n-gram blocking).
@@ -141,7 +142,8 @@ whisper_diarize/
 ├── models.py        # Data models (SpeakerTurn, WordItem, Utterance)
 ├── audio.py         # Audio loading and cleaning
 ├── diarization.py   # Speaker diarization (pyannote)
-├── transcription.py # Speech-to-text (faster-whisper)
+├── transcription.py # Speech-to-text (Qwen3-ASR or faster-whisper)
+├── qwen_asr.py      # Qwen3-ASR backend
 ├── alignment.py     # Align words to speakers
 ├── output.py        # Output formatters (JSON, TXT, SRT)
 ├── pipeline.py      # High-level orchestration
@@ -152,6 +154,7 @@ whisper_diarize/
 
 - Python 3.10+
 - `faster-whisper` 1.2.1+ (includes `distil-large-v3.5` support and the current VAD model)
+- `transformers` 5.13+ for the accuracy profile (`Qwen3-ASR`)
 - `pyannote.audio` 4.0+ (required by the Community-1 pipeline)
 - Hugging Face token with access to:
   - `pyannote/speaker-diarization-community-1`

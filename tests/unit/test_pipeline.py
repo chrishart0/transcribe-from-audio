@@ -218,9 +218,9 @@ class TestStageTrackerParallel:
 
 
 class TestRuntimeConfig:
-    def test_default_profile_maps_to_openai_large_v3(self):
+    def test_default_profile_maps_to_qwen3_asr(self):
         resolved = _resolve_runtime_config(PipelineConfig())
-        assert resolved.whisper_model == "openai/whisper-large-v3"
+        assert resolved.whisper_model == "Qwen/Qwen3-ASR-1.7B-hf"
         assert resolved.alignment_mode == "accurate"
         assert resolved.condition_on_previous_text is False
         assert resolved.repetition_penalty == pytest.approx(1.02)

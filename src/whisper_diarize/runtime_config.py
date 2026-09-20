@@ -27,7 +27,7 @@ class _ProfileDefaults:
 
 _PROFILE_DEFAULTS: dict[str, _ProfileDefaults] = {
     "accuracy": _ProfileDefaults(
-        whisper_model="openai/whisper-large-v3",
+        whisper_model="Qwen/Qwen3-ASR-1.7B-hf",
         compute_type="int8_float16",
         beam_size=8,
         alignment_mode="accurate",

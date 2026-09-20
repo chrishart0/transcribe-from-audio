@@ -8,6 +8,14 @@ data/
 
 # Test data
 test_data/real/
+recordings/
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.diarized.json
+*.diarized.txt
+*.diarized.srt
 
 # Python
 __pycache__/

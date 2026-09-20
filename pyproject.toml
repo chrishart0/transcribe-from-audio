@@ -36,6 +36,9 @@ dev = [
     "ruff>=0.8.0",
     "pyright>=1.1.390",
 ]
+qwen = [
+    "transformers>=5.13.0",
+]
 
 [project.scripts]
 transcribe = "whisper_diarize.cli:main"
