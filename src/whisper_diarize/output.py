@@ -33,8 +33,20 @@ def to_json(utterances: list[Utterance]) -> str:
 
 
 def to_text(utterances: list[Utterance]) -> str:
-    """Convert utterances to readable text format."""
-    lines = [f"{u.speaker}: {u.text}" for u in utterances]
+    """Write a time marker before the first utterance in each minute."""
+    lines: list[str] = []
+    last_minute: int | None = None
+    for u in utterances:
+        minute = int(u.start_s // 60)
+        if minute != last_minute:
+            if lines:
+                lines.append("")
+            seconds = int(u.start_s)
+            hours, remainder = divmod(seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            lines.append(f"[{hours:02d}:{minutes:02d}:{seconds:02d}]")
+            last_minute = minute
+        lines.append(f"{u.speaker}: {u.text}")
     return "\n".join(lines) + "\n"
 
 

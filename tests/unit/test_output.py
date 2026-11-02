@@ -54,6 +54,26 @@ class TestFormatters:
 
 
 class TestWriteAll:
+    def test_readable_transcript_has_one_timestamp_per_minute(self, tmp_path: Path):
+        utterances = [
+            Utterance(0.2, 5.0, "A", "Opening"),
+            Utterance(59.9, 60.1, "B", "Before the minute"),
+            Utterance(62.3, 70.0, "A", "Next minute"),
+            Utterance(90.0, 95.0, "B", "Same minute"),
+            Utterance(3601.5, 3605.0, "A", "After an hour"),
+        ]
+        outputs = write_all(tmp_path / "meeting", utterances)
+        assert outputs["txt"].read_text() == (
+            "[00:00:00]\n"
+            "A: Opening\n"
+            "B: Before the minute\n"
+            "\n[00:01:02]\n"
+            "A: Next minute\n"
+            "B: Same minute\n"
+            "\n[01:00:01]\n"
+            "A: After an hour\n"
+        )
+
     def test_writes_all_formats(self, tmp_path: Path):
         utterances = [
             Utterance(start_s=0.0, end_s=1.0, speaker="A", text="Hello"),

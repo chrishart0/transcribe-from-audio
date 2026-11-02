@@ -127,7 +127,7 @@ accuracy guarantees or formal diarization error rates.
 For an input file `recording.mp3`, the pipeline produces:
 
 - `recording.diarized.json` - Structured data with timestamps
-- `recording.diarized.txt` - Readable dialogue format
+- `recording.diarized.txt` - Readable dialogue with a timestamp at the first utterance in each minute
 - `recording.diarized.srt` - Subtitles with speaker labels
 - `recording.cleaned.wav` - Cleaned audio (if `--save-cleaned`)
 
