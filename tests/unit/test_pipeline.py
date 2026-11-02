@@ -221,6 +221,7 @@ class TestRuntimeConfig:
     def test_default_profile_maps_to_qwen3_asr(self):
         resolved = _resolve_runtime_config(PipelineConfig())
         assert resolved.whisper_model == "Qwen/Qwen3-ASR-1.7B-hf"
+        assert resolved.diarization_model == "nvidia/Nemotron-3-Diarization"
         assert resolved.alignment_mode == "accurate"
         assert resolved.condition_on_previous_text is False
         assert resolved.repetition_penalty == pytest.approx(1.02)
@@ -229,6 +230,21 @@ class TestRuntimeConfig:
     def test_balanced_profile_changes_model_when_using_defaults(self):
         resolved = _resolve_runtime_config(PipelineConfig(profile="balanced"))
         assert resolved.whisper_model == "openai/whisper-large-v3-turbo"
+        assert resolved.diarization_model == "pyannote/speaker-diarization-community-1"
+
+    def test_speaker_hint_selects_community_model(self):
+        resolved = _resolve_runtime_config(PipelineConfig(num_speakers=2))
+        assert resolved.diarization_model == "pyannote/speaker-diarization-community-1"
+
+    def test_explicit_diarization_model_is_preserved(self):
+        resolved = _resolve_runtime_config(PipelineConfig(diarization_model="pyannote/custom"))
+        assert resolved.diarization_model == "pyannote/custom"
+
+    def test_explicit_nemotron_rejects_unsupported_speaker_hints(self):
+        with pytest.raises(ValueError, match="require a pyannote model"):
+            _resolve_runtime_config(
+                PipelineConfig(diarization_model="nvidia/Nemotron-3-Diarization", num_speakers=2)
+            )
 
     def test_speed_profile_uses_latest_distil_whisper_model(self):
         resolved = _resolve_runtime_config(PipelineConfig(profile="speed"))

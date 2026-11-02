@@ -26,7 +26,7 @@ console = Console()
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Diarized transcription using Whisper + pyannote.audio",
+        description="Local diarized transcription using Qwen3-ASR and Nemotron",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -50,7 +50,9 @@ def main() -> None:
         choices=["accuracy", "balanced", "speed"],
         help="Transcription profile preset",
     )
-    parser.add_argument("--model", type=str, default=None, help="Whisper model size or HF model ID")
+    parser.add_argument(
+        "--model", type=str, default=None, help="Transcription model ID or Whisper alias"
+    )
     parser.add_argument(
         "--compute-type",
         type=str,
@@ -108,7 +110,7 @@ def main() -> None:
         "--diarization-model",
         type=str,
         default=None,
-        help="Diarization model ID (default: pyannote/speaker-diarization-community-1)",
+        help="Diarization model ID (accuracy: Nemotron; other profiles/hints: Community-1)",
     )
     parser.add_argument(
         "--num-speakers", type=int, default=None, help="Exact number of speakers (if known)"
@@ -178,13 +180,7 @@ def main() -> None:
         parser.error("--no-repeat-ngram-size must be >= 0")
 
     load_dotenv()
-    hf_token = args.hf_token or os.environ.get("HF_TOKEN")
-    if not hf_token:
-        console.print(
-            "[red]Error:[/red] No Hugging Face token found. "
-            "Provide --hf-token, set HF_TOKEN env var, or add it to .env"
-        )
-        raise SystemExit(1)
+    hf_token = args.hf_token or os.environ.get("HF_TOKEN") or ""
 
     input_path = Path(args.input).expanduser().resolve()
 
@@ -233,6 +229,8 @@ def main() -> None:
     if args.diarization_model is not None:
         config_kwargs["diarization_model"] = args.diarization_model
     config = pipeline.resolve_runtime_config(PipelineConfig(**config_kwargs))
+    if config.diarization_model != "nvidia/Nemotron-3-Diarization" and not hf_token:
+        parser.error("Pyannote requires --hf-token, HF_TOKEN, or a token in .env.")
 
     output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
     vram_gb = pipeline.detect_cuda_total_memory_gb()
@@ -246,7 +244,7 @@ def main() -> None:
     console.print(
         "[dim]Resolved runtime: "
         f"profile={config.profile}, device={config.device}, vram={vram_text}, "
-        f"model={config.whisper_model}, compute={config.compute_type}, beam={config.beam_size}, "
+        f"model={config.whisper_model}, diarization={config.diarization_model}, "
         f"cond_prev={config.condition_on_previous_text}, temp={config.temperature}, "
         f"rep_pen={config.repetition_penalty}, no_repeat_ngram={config.no_repeat_ngram_size}, "
         f"alignment={config.alignment_mode}, workers={workers}, parallel={not args.no_parallel}, "

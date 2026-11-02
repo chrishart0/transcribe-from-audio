@@ -1,10 +1,10 @@
 [project]
 name = "whisper-diarize"
 version = "0.1.0"
-description = "Diarized transcription using Whisper + pyannote.audio"
+description = "Local diarized transcription using Qwen3-ASR and Nemotron"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["transcription", "diarization", "whisper", "pyannote", "speech-to-text"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -12,7 +12,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
@@ -27,6 +26,7 @@ dependencies = [
     "rich>=13.0.0",
     "noisereduce>=3.0.3",
     "scipy>=1.15.3",
+    "transformers>=5.22.1",
 ]
 
 [project.optional-dependencies]
@@ -36,9 +36,7 @@ dev = [
     "ruff>=0.8.0",
     "pyright>=1.1.390",
 ]
-qwen = [
-    "transformers>=5.13.0",
-]
+qwen = []  # Retained for existing installs; accuracy dependencies are now required.
 
 [project.scripts]
 transcribe = "whisper_diarize.cli:main"
@@ -67,7 +65,7 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -81,7 +79,7 @@ select = [
 ]
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 typeCheckingMode = "basic"
 include = ["src"]
 exclude = ["**/__pycache__"]

@@ -14,6 +14,7 @@ import soundfile as sf
 from whisper_diarize import audio, diarization, transcription
 from whisper_diarize.alignment import align_words_to_speakers, smooth_turns
 from whisper_diarize.models import Utterance
+from whisper_diarize.nemotron import MODEL_ID as NEMOTRON_MODEL_ID
 from whisper_diarize.output import write_all
 from whisper_diarize.runtime_config import (
     detect_cuda_total_memory_gb as _detect_cuda_total_memory_gb,
@@ -188,7 +189,7 @@ class PipelineConfig:
     no_repeat_ngram_size: int | None = None
 
     # Diarization
-    diarization_model: str = "pyannote/speaker-diarization-community-1"
+    diarization_model: str | None = None
     num_speakers: int | None = None
     min_speakers: int | None = None
     max_speakers: int | None = None
@@ -272,7 +273,7 @@ class PipelineResult:
 
 def run(
     input_path: Path,
-    hf_token: str,
+    hf_token: str = "",
     config: PipelineConfig | None = None,
     save_cleaned: bool = False,
     on_progress: ProgressCallback | None = None,
@@ -401,12 +402,14 @@ def run(
         min_turn_s, merge_gap_s, flicker_s, max_gap_s, gap_tolerance = _effective_alignment_params(
             config
         )
-        turns = smooth_turns(
-            turns,
-            min_turn_s=min_turn_s,
-            merge_gap_s=merge_gap_s,
-            flicker_s=flicker_s,
-        )
+        # Nemotron's short replies and overlaps were retained in the evaluated configuration.
+        if config.diarization_model != NEMOTRON_MODEL_ID:
+            turns = smooth_turns(
+                turns,
+                min_turn_s=min_turn_s,
+                merge_gap_s=merge_gap_s,
+                flicker_s=flicker_s,
+            )
 
         # --- Align ---
         if tracker:
@@ -455,6 +458,7 @@ def _run_diarize_transcribe_parallel(
     if not config._resolved:
         config = _resolve_runtime_config(config)
     assert config.whisper_model is not None
+    assert config.diarization_model is not None
     assert config.compute_type is not None
     assert config.beam_size is not None
     assert config.vad_filter is not None
@@ -525,6 +529,7 @@ def _run_diarize_transcribe_sequential(
     if not config._resolved:
         config = _resolve_runtime_config(config)
     assert config.whisper_model is not None
+    assert config.diarization_model is not None
     assert config.compute_type is not None
     assert config.beam_size is not None
     assert config.vad_filter is not None

@@ -1,11 +1,12 @@
 """
-whisper-diarize: Diarized transcription using Whisper + pyannote.audio.
+whisper-diarize: Local diarized transcription using Qwen3-ASR and Nemotron.
 
 Example usage:
+    from pathlib import Path
     from whisper_diarize import run, PipelineConfig
 
-    config = PipelineConfig(whisper_model="large-v3", device="cuda")
-    result = run(Path("audio.mp3"), hf_token="hf_...", config=config)
+    config = PipelineConfig(profile="accuracy", device="cuda")
+    result = run(Path("audio.mp3"), config=config)
 
     for u in result.utterances:
         print(f"{u.speaker}: {u.text}")

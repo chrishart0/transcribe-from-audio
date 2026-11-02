@@ -6,6 +6,8 @@ import warnings
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from whisper_diarize.nemotron import MODEL_ID as NEMOTRON_MODEL_ID
+
 if TYPE_CHECKING:
     from whisper_diarize.pipeline import PipelineConfig
 
@@ -106,12 +108,30 @@ def resolve_runtime_config(config: PipelineConfig) -> PipelineConfig:
         raise ValueError(f"Unknown profile '{config.profile}'. Expected one of: {valid}")
 
     defaults = _PROFILE_DEFAULTS[profile]
+    pyannote_options = any(
+        value is not None
+        for value in (
+            config.num_speakers,
+            config.min_speakers,
+            config.max_speakers,
+            config.clustering_threshold,
+            config.min_duration_off,
+        )
+    )
+    diarization_model = config.diarization_model or (
+        NEMOTRON_MODEL_ID
+        if profile == "accuracy" and not pyannote_options
+        else "pyannote/speaker-diarization-community-1"
+    )
+    if diarization_model == NEMOTRON_MODEL_ID and pyannote_options:
+        raise ValueError("Speaker-count and clustering options require a pyannote model.")
     compute_type_user_set = config.compute_type is not None
     beam_size_user_set = config.beam_size is not None
 
     resolved = replace(
         config,
         profile=profile,
+        diarization_model=diarization_model,
         whisper_model=config.whisper_model or defaults.whisper_model,
         compute_type=config.compute_type or defaults.compute_type,
         beam_size=config.beam_size if config.beam_size is not None else defaults.beam_size,

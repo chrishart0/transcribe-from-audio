@@ -69,6 +69,30 @@ MOCK_WORDS = [
 class TestParallelPipelineIntegration:
     """Test the full pipeline with parallel=True (default)."""
 
+    def test_nemotron_keeps_short_replies_in_transcript(self, tmp_path):
+        wav_path = tmp_path / "conversation.wav"
+        _make_test_wav(wav_path)
+        turns = [
+            SpeakerTurn(0.0, 1.0, "SPEAKER_00"),
+            SpeakerTurn(1.0, 1.2, "SPEAKER_01"),
+            SpeakerTurn(1.2, 2.0, "SPEAKER_00"),
+        ]
+        words = [
+            WordItem(0.2, 0.5, "Ready?"),
+            WordItem(1.02, 1.18, "Yes."),
+            WordItem(1.3, 1.8, "Great."),
+        ]
+        with (
+            patch("whisper_diarize.diarization.diarize", return_value=turns),
+            patch("whisper_diarize.transcription.transcribe", return_value=words),
+        ):
+            result = run(wav_path, config=PipelineConfig(clean_audio=False))
+        assert [(u.speaker, u.text) for u in result.utterances] == [
+            ("SPEAKER_00", "Ready?"),
+            ("SPEAKER_01", "Yes."),
+            ("SPEAKER_00", "Great."),
+        ]
+
     def test_parallel_pipeline_produces_outputs(self):
         with TemporaryDirectory() as tmpdir:
             wav_path = Path(tmpdir) / "test.wav"

@@ -1,4 +1,4 @@
-"""Speaker diarization using pyannote.audio."""
+"""Speaker diarization using Nemotron or pyannote.audio."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from whisper_diarize.models import SpeakerTurn
+from whisper_diarize.nemotron import MODEL_ID as NEMOTRON_MODEL_ID
 
 if TYPE_CHECKING:
     from whisper_diarize.audio import StageProgressFn
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 def diarize(
     wav_path: Path,
     token: str,
-    model_id: str = "pyannote/speaker-diarization-community-1",
+    model_id: str = NEMOTRON_MODEL_ID,
     device: str = "cuda",
     num_speakers: int | None = None,
     min_speakers: int | None = None,
@@ -39,6 +40,22 @@ def diarize(
         on_progress: Reports (description, local_fraction) within this stage.
             Model loading is ~15% of the cost, inference is ~85%.
     """
+    if model_id == NEMOTRON_MODEL_ID:
+        if any(
+            value is not None
+            for value in (
+                num_speakers,
+                min_speakers,
+                max_speakers,
+                clustering_threshold,
+                min_duration_off,
+            )
+        ):
+            raise ValueError("Speaker-count and clustering options require a pyannote model.")
+        from whisper_diarize.nemotron import diarize as diarize_nemotron
+
+        return diarize_nemotron(wav_path, device=device, on_progress=on_progress)
+
     from pyannote.audio import Pipeline
 
     if on_progress:

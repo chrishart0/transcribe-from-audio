@@ -47,25 +47,6 @@ def is_qwen_asr_model(model_size: str) -> bool:
     return "qwen3-asr" in lowered
 
 
-def words_from_transcript(text: str, start_s: float, end_s: float) -> list[WordItem]:
-    """Split transcript text into words and spread them across a time span."""
-    tokens = text.split()
-    if not tokens:
-        return []
-    if len(tokens) == 1:
-        return [WordItem(start_s=start_s, end_s=end_s, word=tokens[0])]
-    duration = max(end_s - start_s, 0.0)
-    step = duration / len(tokens)
-    return [
-        WordItem(
-            start_s=start_s + (step * i),
-            end_s=start_s + (step * (i + 1)),
-            word=token,
-        )
-        for i, token in enumerate(tokens)
-    ]
-
-
 def transcribe(
     audio: NDArray[np.floating],
     sr: int,
